@@ -1,5 +1,5 @@
 {
-  "name": "pixelflow",
+  "name": "pretext-pixel",
   "version": "0.1.0",
   "description": "Pretext-inspired pixel animation library: compile once, paint cheap, render anywhere.",
   "type": "module",

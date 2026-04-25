@@ -26,8 +26,10 @@ custom renderer in parallel.
 ## Install
 
 ```sh
-npm install pixelflow
+npm install pretext-pixel
 ```
+
+> Published as `pretext-pixel` on npm — the project name `PixelFlow` was too similar to an existing package, so the registry name references the inspiration ([chenglou/pretext](https://github.com/chenglou/pretext)) instead.
 
 ## Quick start
 
@@ -36,7 +38,7 @@ import {
   compile, prepareSVG,
   paintCanvas, paintSVG, paintAscii,
   createAnimator,
-} from 'pixelflow';
+} from 'pretext-pixel';
 
 // Author a sprite with a char grid + palette.
 // '.' is reserved for transparent.
@@ -127,7 +129,7 @@ variants without recompiling.
 ### Memoization
 
 ```ts
-import { compileMemo, clearCache } from 'pixelflow';
+import { compileMemo, clearCache } from 'pretext-pixel';
 const sprite = compileMemo('hero-walk', source);  // cached by key
 clearCache();
 ```
@@ -143,7 +145,7 @@ controls and timelines.
 Convert a PNG/sprite-sheet into a `SpriteSource`:
 
 ```ts
-import { importImage, compile } from 'pixelflow';
+import { importImage, compile } from 'pretext-pixel';
 
 const img = new Image();
 img.src = 'hero-walk.png';
