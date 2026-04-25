@@ -2,6 +2,9 @@
 
 Pretext-inspired pixel animation. Compile once, paint cheap, render anywhere.
 
+**[Live demo →](https://daniel-nexus.github.io/pixelflow/demos/)** with diff visualizer,
+compile-vs-paint timing chart, palette swap benchmark, stress field, and PNG drop import.
+
 ## Why
 
 Most pixel animation code redraws the whole grid every frame. PixelFlow borrows
