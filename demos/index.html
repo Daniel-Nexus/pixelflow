@@ -298,6 +298,95 @@ function up2x(rows) {
   return out;
 }
 
+// 48×48 / 16-frame "rain at night" — programmatic builder.
+// Most cells are static (sky/moon/trees/ground), only ~18 raindrops change
+// position per frame. This pushes inter-frame similarity to ~98%, so the
+// diff visualizer paints far fewer cells per frame than the bird/heart sprites.
+function buildRainScene() {
+  const W = 48, H = 48;
+  const FRAMES = 16;
+
+  const dist2 = (x, y, cx, cy) => (x - cx) ** 2 + (y - cy) ** 2;
+
+  const trees = [
+    { cx: 6,  base: 38, height: 8,  width: 6 },
+    { cx: 16, base: 38, height: 12, width: 8 },
+    { cx: 28, base: 38, height: 10, width: 7 },
+    { cx: 40, base: 38, height: 9,  width: 6 },
+  ];
+  const isTree = (x, y) => {
+    for (const t of trees) {
+      if (y > t.base) continue;
+      const yFromBase = t.base - y;
+      if (yFromBase >= t.height) continue;
+      const halfW = (1 - yFromBase / t.height) * (t.width / 2) + 0.5;
+      if (Math.abs(x - t.cx) < halfW) return true;
+    }
+    return false;
+  };
+
+  const moonCx = 38, moonCy = 10, moonR = 4;
+
+  // Static base layer — same for every frame.
+  const base = [];
+  for (let y = 0; y < H; y++) {
+    let row = '';
+    for (let x = 0; x < W; x++) {
+      let ch;
+      if (y >= 40) ch = 'g';                                                    // dark ground
+      else if (y >= 38) ch = 'G';                                               // grass top
+      else if (isTree(x, y)) ch = 't';                                          // tree silhouette
+      else if (dist2(x, y, moonCx, moonCy) < moonR * moonR) {
+        const dx = x - moonCx, dy = y - moonCy;
+        ch = (dx + dy < -1) ? 'M' : 'm';                                        // moon highlight / body
+      } else if (dist2(x, y, moonCx, moonCy) < (moonR + 1.5) ** 2) ch = 'h';    // halo (blends to sky)
+      else if (y < 8)  ch = 's';                                                // deep night
+      else if (y < 20) ch = 'S';                                                // dark sky
+      else if (y < 32) ch = 'k';                                                // mid sky
+      else             ch = 'h';                                                // horizon glow
+      row += ch;
+    }
+    base.push(row);
+  }
+
+  // Rain tracks — each has an x column and a phase offset.
+  const NUM_TRACKS = 18;
+  let seed = 7;
+  const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 0x100000000; };
+  const tracks = [];
+  for (let i = 0; i < NUM_TRACKS; i++) {
+    tracks.push({ x: Math.floor(rand() * W), phase: Math.floor(rand() * FRAMES) });
+  }
+
+  const placeable = ch => ch === 's' || ch === 'S' || ch === 'k' || ch === 'h';
+
+  // Per-frame: copy base + stamp rain at phase-shifted positions.
+  const frames = [];
+  for (let f = 0; f < FRAMES; f++) {
+    const grid = base.map(r => r.split(''));
+    for (const t of tracks) {
+      const phase = (f - t.phase + FRAMES) % FRAMES;
+      const y = Math.floor((phase / FRAMES) * 36) + 2;
+      const x = (t.x + Math.floor(phase / 4)) % W;  // slight slant
+      if (y >= 2 && y < 38 && placeable(grid[y][x])) grid[y][x] = 'r';
+      if (y + 1 < 38 && placeable(grid[y + 1][x])) grid[y + 1][x] = 'R';
+    }
+    frames.push(grid.map(r => r.join('')));
+  }
+
+  return {
+    frames,
+    palette: {
+      s: '#080820', S: '#101440', k: '#1a2055', h: '#2a3370',  // sky gradient
+      M: '#fefce8', m: '#fde68a',                               // moon
+      t: '#0a0e1a', g: '#0c0f1c', G: '#1a2336',                 // tree, ground, grass
+      r: '#bae6fd', R: '#7dd3fc',                               // rain head, trail
+    },
+    speed: 80,
+    name: 'scene',
+  };
+}
+
 const sprites = {
   bird: {
     frames: [
@@ -326,33 +415,7 @@ const sprites = {
     speed: 140,
     name: 'bird',
   },
-  flame: {
-    frames: [
-      up2x([
-        ".....Y......", "....YOY.....", "...YORROY...", "..YORDDROY..",
-        ".YORDWDDROY.", ".YORDDDDROY.", "YORDDDDDDROY", "YORDDDDDDROY",
-        ".YORDDDDROY.", "..YORRRROY..", "...YOOOOY...", "....YYYY....",
-      ]),
-      up2x([
-        "....YY......", "...YOOY.....", "..YORROY....", ".YORDDROY...",
-        "YORDWDDROY..", "YORDDDDROY..", "YORDDDDDROY.", "YORDDDDDROYY",
-        ".YORDDDROYO.", "..YORRROY...", "...YOOOY....", "....YYY.....",
-      ]),
-      up2x([
-        "......Y.....", ".....YOY....", "....YORRY...", "...YORDDROY.",
-        "..YORDWDROY.", "..YORDDDDROY", ".YORDDDDDROY", ".YORDDDDDROY",
-        "..YORDDDROY.", "...YORRROY..", "....YOOOY...", "....YYY.....",
-      ]),
-      up2x([
-        "...Y...Y....", "..YOY.YOY...", "..YOROOROY..", ".YORDDDDROY.",
-        ".YORDWDDROY.", "YORDDDDDDROY", "YORDDDDDDROY", "YORDDDDDDROY",
-        ".YORDDDDROY.", "..YORRRROY..", "...YOOOOY...", "....YYYY....",
-      ]),
-    ],
-    palette: { Y: '#fef08a', O: '#fb923c', R: '#dc2626', D: '#7f1d1d', W: '#ffffff' },
-    speed: 90,
-    name: 'flame',
-  },
+  scene: buildRainScene(),
   heart: {
     frames: [
       up2x([
@@ -381,12 +444,22 @@ const themes = {
   default: null,
   night: {
     bird:  { B: '#1e1b4b', L: '#3730a3', O: '#854d0e', W: '#94a3b8', K: '#000', Y: '#a16207' },
-    flame: { Y: '#1e293b', O: '#312e81', R: '#3730a3', D: '#1e1b4b', W: '#475569' },
+    scene: {
+      s: '#040414', S: '#08092a', k: '#0e123c', h: '#191e54',
+      M: '#cbd5e1', m: '#94a3b8',
+      t: '#020308', g: '#04060e', G: '#0c1424',
+      r: '#7dd3fc', R: '#38bdf8',
+    },
     heart: { R: '#581c87', P: '#7e22ce', D: '#3b0764', W: '#a78bfa' },
   },
   damaged: {
     bird:  { B: '#7f1d1d', L: '#dc2626', O: '#f97316', W: '#fee2e2', K: '#0a0a0a', Y: '#fbbf24' },
-    flame: { Y: '#fee2e2', O: '#fca5a5', R: '#7f1d1d', D: '#450a0a', W: '#fff' },
+    scene: {
+      s: '#1c0808', S: '#3b1414', k: '#601e1e', h: '#7c2d2d',
+      M: '#fed7aa', m: '#fb923c',
+      t: '#0a0408', g: '#0f0a0a', G: '#1f1212',
+      r: '#fca5a5', R: '#f87171',
+    },
     heart: { R: '#7f1d1d', P: '#dc2626', D: '#450a0a', W: '#fee2e2' },
   },
 };
@@ -417,7 +490,7 @@ function rebuildSpritePicker() {
   }
 }
 
-let current = 'bird';
+let current = 'scene';
 let theme = 'default';
 let sprite = null;
 let svgState = null;
@@ -491,6 +564,10 @@ function load() {
   diffFullCtx.imageSmoothingEnabled = false;
   diffOverlayCtx.imageSmoothingEnabled = false;
   svgState = prepareSVG(svg, sprite);
+  // ASCII panel: font size scales with sprite width so it fits the panel.
+  // Monospace chars are ~0.6× font size wide. Target ~180px panel inner width.
+  const asciiFontPx = Math.max(3, Math.min(11, Math.floor(180 / sprite.width / 0.6)));
+  ascii.style.fontSize = asciiFontPx + 'px';
   // Rebuild animator.
   if (animator) animator.stop();
   paintTimes.length = 0;
