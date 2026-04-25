@@ -1,0 +1,18 @@
+node_modules/
+*.log
+.DS_Store
+
+# per-user Claude Code settings (commit launch.json but not personal prefs)
+.claude/settings.local.json
+
+# build artifact tarballs (npm pack output)
+*.tgz
+pixelflow-*.tar.gz
+
+# editor/IDE
+.vscode/
+.idea/
+*.swp
+
+# os
+Thumbs.db

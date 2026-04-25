@@ -1,0 +1,186 @@
+/**
+ * PixelFlow — pretext-inspired pixel animation library
+ *
+ * Design philosophy borrowed from chenglou/pretext:
+ *   1. compile() does heavy work once  (cf. pretext's prepare()).
+ *   2. paint*() is cheap, called every frame  (cf. pretext's layout()).
+ *   3. A position abstraction (FrameCursor) lets you swap render targets.
+ *   4. The same compiled state feeds multiple consumers (canvas, svg, ascii, ...).
+ *
+ * Pretext stays in pure-arithmetic land for layout. PixelFlow stays in
+ * "diff ops only" land for painting: between frames we emit only cells
+ * whose color changed, so per-frame work scales with motion, not sprite area.
+ *
+ * MIT License.
+ */
+/** A single frame: an array of equal-length strings. Each char is a palette key. */
+export type Frame = readonly string[];
+/** Palette: char -> CSS color. The key '.' is reserved for transparent. */
+export type Palette = Readonly<Record<string, string>>;
+/** Author-facing input passed to compile(). */
+export interface SpriteSource {
+    readonly frames: readonly Frame[];
+    readonly palette: Palette;
+    /** Optional ms delay between frames. Default: 100. */
+    readonly speed?: number;
+    /** Optional name for debugging/tooling. */
+    readonly name?: string;
+    /** Optional metadata (hitbox, anchor, gameplay events). Carried through compile(). */
+    readonly meta?: Readonly<Record<string, unknown>>;
+}
+/** Diff ops for one frame, packed as flat [x0, y0, c0, x1, y1, c1, ...]. */
+export type DiffOps = Int16Array;
+/** Compiled, paint-ready sprite. Treat as opaque — fields are exposed for tooling/inspection. */
+export interface CompiledSprite {
+    readonly width: number;
+    readonly height: number;
+    /** Palette index 0 is always 'transparent'. Indexes 1..N map to colors. */
+    readonly palette: readonly string[];
+    /** Per-frame diff ops. Frame 0 paints all non-transparent cells from blank. */
+    readonly diffs: readonly DiffOps[];
+    /** Per-frame full grid as palette indices (row-major, length = w*h). For renderers that prefer full state. */
+    readonly grids: readonly Int8Array[];
+    /** Optional ms delay between frames. */
+    readonly speed: number;
+    readonly name: string;
+    readonly meta: Readonly<Record<string, unknown>>;
+    readonly stats: CompileStats;
+}
+export interface CompileStats {
+    readonly frameCount: number;
+    readonly totalCells: number;
+    readonly totalDiffOps: number;
+    /** 0..1, fraction of cells skipped vs full redraw. */
+    readonly compressionRatio: number;
+    readonly compileMs: number;
+}
+/** Position cursor — analogous to pretext's LayoutCursor. */
+export interface FrameCursor {
+    readonly frameIndex: number;
+}
+/** Bounding box of non-transparent pixels for a single frame. */
+export interface FrameBounds {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    /** True if the frame is fully transparent. */
+    readonly empty: boolean;
+}
+/**
+ * Compile a sprite source into a paint-ready, diff-compressed structure.
+ *
+ * This is the hot setup path. It validates input, builds the palette,
+ * converts each frame to a packed Int8Array of palette indices, and
+ * pre-computes inter-frame diff ops. Call it once per unique sprite —
+ * paint*() functions are cheap on the result.
+ */
+export declare function compile(source: SpriteSource): CompiledSprite;
+export declare const cursorStart: FrameCursor;
+/** Advance a cursor by 1 frame, looping at the end. */
+export declare function nextCursor(sprite: CompiledSprite, cursor: FrameCursor): FrameCursor;
+/** Step a cursor by an arbitrary integer delta (positive or negative), with wrap-around. */
+export declare function stepCursor(sprite: CompiledSprite, cursor: FrameCursor, delta: number): FrameCursor;
+/**
+ * Paint one frame into a 2D canvas context. The canvas itself should be
+ * sized to (sprite.width, sprite.height) — use CSS to scale up with
+ * `image-rendering: pixelated`. Caller controls clearing semantics:
+ * if you want a clean redraw on frame 0, pass `clearOnFirst: true`.
+ */
+export declare function paintCanvas(ctx: CanvasRenderingContext2D, sprite: CompiledSprite, cursor: FrameCursor, options?: {
+    clearOnFirst?: boolean;
+}): void;
+export interface SVGRenderState {
+    readonly rects: readonly SVGRectElement[];
+    readonly width: number;
+    readonly height: number;
+}
+/**
+ * One-time SVG node setup. Allocates one <rect> per pixel and clears the host.
+ * Sets viewBox + shape-rendering on the host. Call once per sprite/host pair;
+ * paintSVG() is then cheap.
+ */
+export declare function prepareSVG(host: SVGSVGElement, sprite: CompiledSprite): SVGRenderState;
+export declare function paintSVG(state: SVGRenderState, sprite: CompiledSprite, cursor: FrameCursor): void;
+/**
+ * Render a frame as a plain string with luminance-mapped block characters.
+ * Useful for terminals, snapshots, debugging.
+ */
+export declare function renderAscii(sprite: CompiledSprite, cursor: FrameCursor): string;
+/** Convenience for DOM hosts: writes ASCII into a <pre> via textContent. */
+export declare function paintAscii(pre: HTMLElement, sprite: CompiledSprite, cursor: FrameCursor): void;
+/** Compute the bounding box of non-transparent pixels in a single frame. */
+export declare function measureFrameBounds(sprite: CompiledSprite, cursor: FrameCursor): FrameBounds;
+/** Bounding box that contains every frame's non-transparent pixels. */
+export declare function measureUnionBounds(sprite: CompiledSprite): FrameBounds;
+/**
+ * Return a new compiled sprite with the palette colors remapped, preserving
+ * the diff ops and grids. Use to produce day/night/damaged variants without
+ * recompiling. The mapping is keyed by char from the original SpriteSource;
+ * unmapped chars keep their original color.
+ *
+ * This is cheap: the structural arrays are reused by reference.
+ */
+export declare function withPalette(sprite: CompiledSprite, originalSource: SpriteSource, remap: Readonly<Record<string, string>>): CompiledSprite;
+export interface AnimatorOptions {
+    /** Override the sprite's speed. */
+    readonly speed?: number;
+    /** Called after each paint with the just-drawn cursor. */
+    readonly onTick?: (cursor: FrameCursor) => void;
+}
+export interface Animator {
+    start(): void;
+    stop(): void;
+    isRunning(): boolean;
+    cursor(): FrameCursor;
+    /** Manually paint the current frame (e.g. after seek). */
+    redraw(): void;
+    /** Jump to a specific frame index without playing. */
+    seek(frameIndex: number): void;
+    /** Step backward/forward by N frames without playing. */
+    step(delta: number): void;
+}
+/**
+ * Bind a compiled sprite to one or more paint callbacks and drive playback.
+ * Pass any number of paint fns — they all receive the same cursor on each tick.
+ *
+ *   const a = createAnimator(sprite, [
+ *     c => paintCanvas(ctx, sprite, c),
+ *     c => paintSVG(svgState, sprite, c),
+ *   ]);
+ *   a.start();
+ */
+export declare function createAnimator(sprite: CompiledSprite, paintFns: ReadonlyArray<(cursor: FrameCursor) => void>, options?: AnimatorOptions): Animator;
+/** Result of importing an image: raw color grid, plus an auto-built SpriteSource. */
+export interface ImportResult {
+    readonly source: SpriteSource;
+    readonly palette: Palette;
+}
+export interface ImportOptions {
+    /** Max distinct colors. Extra colors get quantized to nearest. Default: 16. */
+    readonly maxColors?: number;
+    /** Alpha threshold (0..255) below which a pixel is treated as transparent. Default: 32. */
+    readonly alphaThreshold?: number;
+    /** Sprite-sheet rows. Default: 1. */
+    readonly rows?: number;
+    /** Sprite-sheet columns. Default: 1. */
+    readonly cols?: number;
+    /** Optional name for the sprite. */
+    readonly name?: string;
+}
+/**
+ * Convert an HTMLImageElement (or anything drawable to canvas) into a SpriteSource.
+ * Slices the image into rows×cols frames, quantizes colors to a palette of
+ * single-char keys, and produces a SpriteSource you can pass to compile().
+ *
+ * Quantization is naive nearest-neighbor median-cut-lite: counts unique colors,
+ * keeps the top maxColors by frequency, and remaps the rest to the nearest.
+ */
+export declare function importImage(image: HTMLImageElement | HTMLCanvasElement, options?: ImportOptions): ImportResult;
+/**
+ * Compile with memoization. Pass a stable cacheKey (e.g. sprite name) to
+ * reuse work across re-renders. Falls through to compile() on miss.
+ */
+export declare function compileMemo(cacheKey: string, source: SpriteSource): CompiledSprite;
+export declare function clearCache(): void;
+//# sourceMappingURL=pixelflow.d.ts.map

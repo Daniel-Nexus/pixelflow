@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PixelFlow demo</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fafafa;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --panel: #1a1a1a;
+    --border: rgba(0,0,0,0.1);
+    --code-bg: #f4f4f4;
+    --accent: #3b82f6;
+    --good: #10b981;
+    --bad:  #ef4444;
+    --warn: #f59e0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f0f0f; --fg: #e8e8e8; --muted: #999; --border: rgba(255,255,255,0.12); --code-bg: #1a1a1a; }
+  }
+  * { box-sizing: border-box; }
+  body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 32px 24px 96px; background: var(--bg); color: var(--fg); max-width: 980px; margin-inline: auto; line-height: 1.55; }
+  h1 { font-size: 22px; font-weight: 500; margin: 0 0 4px; }
+  h2 { font-size: 16px; font-weight: 500; margin: 0 0 4px; }
+  h2 .anchor { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 6px; text-decoration: none; }
+  p.lede { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  p.section-lede { color: var(--muted); margin: 0 0 16px; font-size: 13px; }
+  section { padding: 28px 0; border-top: 0.5px solid var(--border); }
+  section:first-of-type { border-top: 0; padding-top: 8px; }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 24px; font-size: 13px; }
+  nav.toc a { color: var(--muted); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+  .controls { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+  button { font: inherit; padding: 6px 12px; border: 0.5px solid var(--border); background: transparent; color: var(--fg); border-radius: 6px; cursor: pointer; font-size: 13px; }
+  button:hover { background: rgba(0,0,0,0.04); }
+  @media (prefers-color-scheme: dark) { button:hover { background: rgba(255,255,255,0.06); } }
+  button.on { background: var(--accent); color: white; border-color: var(--accent); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .stage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stage.two { grid-template-columns: repeat(2, 1fr); }
+  .panel { background: var(--panel); border-radius: 8px; padding: 16px; min-height: 240px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; position: relative; }
+  .panel-label { font-family: ui-monospace, monospace; font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; align-self: flex-start; }
+  canvas, svg { width: 192px; height: 192px; image-rendering: pixelated; image-rendering: crisp-edges; }
+  pre.ascii { font-family: ui-monospace, monospace; font-size: 11px; line-height: 1.0; letter-spacing: 0; white-space: pre; color: #d0d0d0; margin: 0; }
+  .stats { background: var(--code-bg); border-radius: 8px; padding: 14px 16px; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.8; }
+  .stat-line { display: flex; justify-content: space-between; gap: 12px; }
+  .stat-key { color: var(--muted); }
+  .ratio { color: var(--good); }
+  .bad-ratio { color: var(--bad); }
+  details { margin-top: 24px; border: 0.5px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+  summary { cursor: pointer; font-weight: 500; font-size: 14px; }
+  pre.code { background: var(--code-bg); padding: 14px; border-radius: 6px; overflow-x: auto; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.5; margin: 12px 0 0; }
+
+  /* Bar chart */
+  .barchart { display: grid; grid-template-columns: 140px 1fr 80px; row-gap: 8px; column-gap: 12px; align-items: center; font-family: ui-monospace, monospace; font-size: 12px; background: var(--code-bg); padding: 14px 16px; border-radius: 8px; }
+  .bar-label { color: var(--muted); }
+  .bar-track { height: 14px; background: rgba(127,127,127,0.15); border-radius: 4px; overflow: hidden; position: relative; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 200ms ease; }
+  .bar-fill.compile { background: var(--warn); }
+  .bar-fill.paint   { background: var(--good); }
+  .bar-fill.swap    { background: var(--good); }
+  .bar-fill.recomp  { background: var(--bad); }
+  .bar-num { font-variant-numeric: tabular-nums; text-align: right; }
+
+  /* Stress field */
+  .stress-canvas { width: 100%; height: 360px; display: block; image-rendering: pixelated; image-rendering: crisp-edges; background: #0a0a0a; border-radius: 8px; }
+  .stress-row { display: flex; gap: 14px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; font-size: 13px; }
+  .stress-row label { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .stress-row input[type=range] { width: 200px; }
+  .fps-badge { font-family: ui-monospace, monospace; font-size: 13px; padding: 4px 10px; border-radius: 6px; background: var(--code-bg); }
+  .fps-badge.good { background: rgba(16,185,129,0.18); color: var(--good); }
+  .fps-badge.bad  { background: rgba(239,68,68,0.18);  color: var(--bad);  }
+
+  /* Drop zone */
+  .dropzone { border: 1.5px dashed var(--border); border-radius: 10px; padding: 28px; text-align: center; color: var(--muted); font-size: 13px; transition: background 120ms, border-color 120ms; }
+  .dropzone.over { background: rgba(59,130,246,0.08); border-color: var(--accent); color: var(--fg); }
+  .dropzone strong { color: var(--fg); font-weight: 500; }
+  .dropzone-row { display: flex; gap: 10px; align-items: center; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+  .dropzone input[type=number] { width: 60px; padding: 4px 6px; border-radius: 4px; border: 0.5px solid var(--border); background: var(--code-bg); color: var(--fg); font: inherit; font-size: 13px; }
+
+  /* Diff visualizer */
+  .diff-counter { font-family: ui-monospace, monospace; font-size: 12px; padding: 10px 14px; background: var(--code-bg); border-radius: 8px; margin-top: 12px; }
+  .diff-counter .big { font-size: 16px; color: var(--good); }
+  canvas.overlay { background: #050505; }
+
+  /* Section emphasis box */
+  .takeaway { font-size: 12px; color: var(--muted); padding: 10px 14px; border-left: 2px solid var(--accent); background: var(--code-bg); border-radius: 4px; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<h1>PixelFlow</h1>
+<p class="lede">Pretext-inspired pixel animation. Compile once, paint cheap, render anywhere.</p>
+
+<nav class="toc">
+  <a href="#hero">1. Multi-renderer</a>
+  <a href="#diff">2. Diff visualizer</a>
+  <a href="#timing">3. Compile vs paint</a>
+  <a href="#swap">4. Palette swap</a>
+  <a href="#stress">5. Stress field</a>
+  <a href="#import">6. PNG import</a>
+  <a href="#code">code</a>
+</nav>
+
+<!-- ============================================================ -->
+<section id="hero">
+<h2>1. One compile, three renderers <a href="#hero" class="anchor">#</a></h2>
+<p class="section-lede">Same compiled sprite, painted in parallel by Canvas2D, SVG, and ASCII.</p>
+
+<div class="controls" id="sprite-controls"></div>
+
+<div class="stage">
+  <div class="panel">
+    <span class="panel-label">canvas</span>
+    <canvas id="canvas"></canvas>
+  </div>
+  <div class="panel">
+    <span class="panel-label">svg</span>
+    <svg id="svg"></svg>
+  </div>
+  <div class="panel">
+    <span class="panel-label">ascii</span>
+    <pre class="ascii" id="ascii"></pre>
+  </div>
+</div>
+
+<div class="controls">
+  <button id="play-pause">Pause</button>
+  <button id="step-back">◀ Step</button>
+  <button id="step-fwd">Step ▶</button>
+  <span style="margin-left: 12px; color: var(--muted); font-size: 13px;">Theme:</span>
+  <button data-theme="default" class="theme-btn on">default</button>
+  <button data-theme="night" class="theme-btn">night</button>
+  <button data-theme="damaged" class="theme-btn">damaged</button>
+</div>
+
+<div class="stats" id="stats"></div>
+</section>
+
+<!-- ============================================================ -->
+<section id="diff">
+<h2>2. Diff visualizer <a href="#diff" class="anchor">#</a></h2>
+<p class="section-lede">Why is per-frame paint cheap? Most cells don't change. The right panel shows
+only the cells that get repainted on each frame — everything else is left untouched.</p>
+
+<div class="stage two">
+  <div class="panel">
+    <span class="panel-label">full render</span>
+    <canvas id="diff-full"></canvas>
+  </div>
+  <div class="panel">
+    <span class="panel-label">painted cells only</span>
+    <canvas id="diff-overlay" class="overlay"></canvas>
+  </div>
+</div>
+
+<div class="diff-counter" id="diff-counter"></div>
+<p class="takeaway">A typical frame repaints 2–5% of cells. The compiled <code>diffs[i]</code> buffer
+is a packed <code>Int16Array</code>; the renderer is just a tight 3-step <code>for</code> loop
+over <code>[x, y, color]</code> triples.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="timing">
+<h2>3. Compile vs paint timing <a href="#timing" class="anchor">#</a></h2>
+<p class="section-lede">The setup/hot-path split: heavy work happens once, painting stays sub-millisecond.</p>
+
+<div class="barchart" id="timing-chart">
+  <div class="bar-label">compile() once</div>
+  <div class="bar-track"><div class="bar-fill compile" id="bar-compile"></div></div>
+  <div class="bar-num" id="num-compile">— ms</div>
+
+  <div class="bar-label">paint per-frame (avg)</div>
+  <div class="bar-track"><div class="bar-fill paint" id="bar-paint"></div></div>
+  <div class="bar-num" id="num-paint">— ms</div>
+</div>
+<p class="takeaway" id="timing-takeaway">Measuring…</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="swap">
+<h2>4. Palette swap timing <a href="#swap" class="anchor">#</a></h2>
+<p class="section-lede"><code>withPalette()</code> is O(palette size). It returns a new compiled
+sprite that reuses <code>diffs</code> and <code>grids</code> by reference — no pixels are recomputed.
+Compare against a full <code>compile()</code> recompile of the same source with the new colors.</p>
+
+<div class="controls">
+  <button id="swap-bench" class="on">Run swap benchmark</button>
+  <span style="color: var(--muted); font-size: 13px;">target sprite:</span>
+  <span id="swap-target" style="font-family: ui-monospace, monospace; font-size: 13px;">bird</span>
+</div>
+
+<div class="barchart" id="swap-chart">
+  <div class="bar-label">withPalette() (1000×)</div>
+  <div class="bar-track"><div class="bar-fill swap" id="bar-swap"></div></div>
+  <div class="bar-num" id="num-swap">— ms</div>
+
+  <div class="bar-label">compile() recompile (1000×)</div>
+  <div class="bar-track"><div class="bar-fill recomp" id="bar-recomp"></div></div>
+  <div class="bar-num" id="num-recomp">— ms</div>
+</div>
+<p class="takeaway" id="swap-takeaway">Click "Run swap benchmark" to compare.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="stress">
+<h2>5. Stress field <a href="#stress" class="anchor">#</a></h2>
+<p class="section-lede">Many sprites, two paint strategies. Toggle between PixelFlow's diff-only
+hot path and a naive full-redraw baseline. Watch the FPS gap widen as instance count climbs.</p>
+
+<div class="stress-row">
+  <label>instances <input type="range" id="stress-count" min="0" max="5000" value="800" step="50"><span id="stress-count-num" style="font-family: ui-monospace, monospace;">800</span></label>
+  <div style="display:flex; gap:6px;">
+    <button id="stress-mode-pf" class="on">PixelFlow (diff)</button>
+    <button id="stress-mode-naive">Naive full redraw</button>
+  </div>
+  <span class="fps-badge" id="fps-badge">— fps</span>
+  <span class="fps-badge" id="cells-badge">— cells/f</span>
+</div>
+
+<canvas id="stress-canvas" class="stress-canvas"></canvas>
+<p class="takeaway" id="stress-takeaway">Both badges show real per-frame work: <code>cells/f</code> is the
+total <code>fillRect</code> count. PixelFlow only paints cells that differ from the previous frame;
+naive walks every non-transparent cell of every instance every frame. The savings scale with
+animation similarity — push the slider toward 5000 to see the FPS gap widen.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="import">
+<h2>6. PNG import <a href="#import" class="anchor">#</a></h2>
+<p class="section-lede">Drop a PNG (or sprite-sheet). PixelFlow will quantize colors, build a
+single-char palette, and slice it into frames.</p>
+
+<div class="dropzone" id="dropzone">
+  <strong>Drop a PNG here</strong>, or <button id="dropzone-pick" style="text-decoration: underline; padding: 0; border: 0; color: var(--accent); cursor: pointer; background: transparent;">pick a file</button>
+  <input type="file" id="dropzone-input" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
+  <div class="dropzone-row">
+    <label style="display:flex; gap:6px; align-items:center;">rows <input type="number" id="rows" value="1" min="1" max="32"></label>
+    <label style="display:flex; gap:6px; align-items:center;">cols <input type="number" id="cols" value="1" min="1" max="32"></label>
+    <label style="display:flex; gap:6px; align-items:center;">maxColors <input type="number" id="maxc" value="16" min="2" max="62"></label>
+  </div>
+  <div id="dropzone-status" style="margin-top: 10px; font-size: 12px;"></div>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<section id="code">
+<details>
+<summary>Usage example</summary>
+<pre class="code">import { compile, prepareSVG, paintCanvas, paintSVG, paintAscii, createAnimator } from 'pixelflow';
+
+const sprite = compile({
+  frames: [
+    [
+      "..RRRR..",
+      ".RRRRRR.",
+      ".R.RR.R.",
+      "..RRRR..",
+    ],
+    // ...more frames
+  ],
+  palette: { R: '#dc2626' },
+  speed: 120,
+});
+
+const ctx = document.querySelector('canvas').getContext('2d');
+const svgState = prepareSVG(document.querySelector('svg'), sprite);
+const pre = document.querySelector('pre');
+
+const anim = createAnimator(sprite, [
+  c =&gt; paintCanvas(ctx, sprite, c),
+  c =&gt; paintSVG(svgState, sprite, c),
+  c =&gt; paintAscii(pre, sprite, c),
+]);
+anim.start();</pre>
+</details>
+</section>
+
+<script type="module">
+import {
+  compile, cursorStart, prepareSVG, paintCanvas, paintSVG, paintAscii,
+  createAnimator, withPalette, measureUnionBounds, importImage,
+} from '../dist/pixelflow.js';
+
+// =============================================================================
+// Sprite library + themes
+// =============================================================================
+
+function up2x(rows) {
+  const out = [];
+  for (const row of rows) {
+    let d = '';
+    for (const ch of row) d += ch + ch;
+    out.push(d, d);
+  }
+  return out;
+}
+
+const sprites = {
+  bird: {
+    frames: [
+      up2x([
+        "............", "...BBBB.....", "..BLLLLB....", ".BLLWLLLB...",
+        "BLLLLLLLB...", "BLLKLLLLB...", "BLLLLLOOOO..", "BLLLLLLB....",
+        ".BBBBBB.....", "..K..K......", "..Y..Y......", "............",
+      ]),
+      up2x([
+        "..BB........", ".BLLB.......", "BLLLLB......", ".BLWLLBB....",
+        "..BLLLLLB...", "..BLKLLLB...", "..BLLLLOOOO.", "..BLLLLB....",
+        "...BBBB.....", "...K..K.....", "...Y..Y.....", "............",
+      ]),
+      up2x([
+        "............", "...BBBB.....", "..BLLLLB....", ".BLLWLLLB...",
+        "BLLLLLLLB...", "BLLKLLLLB...", "BLLLLLOOOO..", "BLLLLLLB....",
+        ".BBBBBB.....", "..K..K......", "..Y..Y......", "............",
+      ]),
+      up2x([
+        "............", "...BBBB.....", "..BLLLLB....", ".BLLWLLLB...",
+        ".BLLLLLLB...", ".BLKLLLLB...", ".BLLLLLOOOO.", "BBLLLLLB....",
+        "BLBBBBBB....", ".BK..K......", "..Y..Y......", "............",
+      ]),
+    ],
+    palette: { B: '#1d4ed8', L: '#60a5fa', O: '#f97316', W: '#ffffff', K: '#0a0a0a', Y: '#fbbf24' },
+    speed: 140,
+    name: 'bird',
+  },
+  flame: {
+    frames: [
+      up2x([
+        ".....Y......", "....YOY.....", "...YORROY...", "..YORDDROY..",
+        ".YORDWDDROY.", ".YORDDDDROY.", "YORDDDDDDROY", "YORDDDDDDROY",
+        ".YORDDDDROY.", "..YORRRROY..", "...YOOOOY...", "....YYYY....",
+      ]),
+      up2x([
+        "....YY......", "...YOOY.....", "..YORROY....", ".YORDDROY...",
+        "YORDWDDROY..", "YORDDDDROY..", "YORDDDDDROY.", "YORDDDDDROYY",
+        ".YORDDDROYO.", "..YORRROY...", "...YOOOY....", "....YYY.....",
+      ]),
+      up2x([
+        "......Y.....", ".....YOY....", "....YORRY...", "...YORDDROY.",
+        "..YORDWDROY.", "..YORDDDDROY", ".YORDDDDDROY", ".YORDDDDDROY",
+        "..YORDDDROY.", "...YORRROY..", "....YOOOY...", "....YYY.....",
+      ]),
+      up2x([
+        "...Y...Y....", "..YOY.YOY...", "..YOROOROY..", ".YORDDDDROY.",
+        ".YORDWDDROY.", "YORDDDDDDROY", "YORDDDDDDROY", "YORDDDDDDROY",
+        ".YORDDDDROY.", "..YORRRROY..", "...YOOOOY...", "....YYYY....",
+      ]),
+    ],
+    palette: { Y: '#fef08a', O: '#fb923c', R: '#dc2626', D: '#7f1d1d', W: '#ffffff' },
+    speed: 90,
+    name: 'flame',
+  },
+  heart: {
+    frames: [
+      up2x([
+        "..RR..RR....", ".RPPRRPPR...", "RPPWPPPWPPR.", "RPWWPPPPWWPR",
+        "RPPPPPPPPPPR", "RPPPPPPPPPPR", ".RPPPPPPPPR.", "..RPPPPPPR..",
+        "...RPPPPR...", "....RPPR....", ".....RR.....", "............",
+      ]),
+      up2x([
+        "............", "..RR..RR....", ".RPPRRPPR...", "RPPWPPPWPPR.",
+        "RPWWPPPPWWPR", "RPPPPPPPPPPR", ".RPPPPPPPPR.", "..RPPPPPPR..",
+        "...RPPPPR...", "....RPPR....", ".....RR.....", "............",
+      ]),
+      up2x([
+        "............", "..DD..DD....", ".DRRDDRRD...", "DRRPRRRPRRD.",
+        "DRPPRRRRPPRD", "DRRRRRRRRRRD", ".DRRRRRRRRD.", "..DRRRRRRD..",
+        "...DRRRRD...", "....DRRD....", ".....DD.....", "............",
+      ]),
+    ],
+    palette: { R: '#ec4899', P: '#f9a8d4', D: '#9d174d', W: '#ffffff' },
+    speed: 220,
+    name: 'heart',
+  },
+};
+
+const themes = {
+  default: null,
+  night: {
+    bird:  { B: '#1e1b4b', L: '#3730a3', O: '#854d0e', W: '#94a3b8', K: '#000', Y: '#a16207' },
+    flame: { Y: '#1e293b', O: '#312e81', R: '#3730a3', D: '#1e1b4b', W: '#475569' },
+    heart: { R: '#581c87', P: '#7e22ce', D: '#3b0764', W: '#a78bfa' },
+  },
+  damaged: {
+    bird:  { B: '#7f1d1d', L: '#dc2626', O: '#f97316', W: '#fee2e2', K: '#0a0a0a', Y: '#fbbf24' },
+    flame: { Y: '#fee2e2', O: '#fca5a5', R: '#7f1d1d', D: '#450a0a', W: '#fff' },
+    heart: { R: '#7f1d1d', P: '#dc2626', D: '#450a0a', W: '#fee2e2' },
+  },
+};
+
+// =============================================================================
+// Section 1: Hero (multi-renderer)
+// =============================================================================
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const svg = document.getElementById('svg');
+const ascii = document.getElementById('ascii');
+const stats = document.getElementById('stats');
+const playPause = document.getElementById('play-pause');
+const stepBack = document.getElementById('step-back');
+const stepFwd = document.getElementById('step-fwd');
+
+const ctrlHost = document.getElementById('sprite-controls');
+function rebuildSpritePicker() {
+  ctrlHost.innerHTML = '';
+  for (const name of Object.keys(sprites)) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.dataset.sprite = name;
+    if (name === current) b.classList.add('on');
+    ctrlHost.appendChild(b);
+  }
+}
+
+let current = 'bird';
+let theme = 'default';
+let sprite = null;
+let svgState = null;
+let animator = null;
+
+// Rolling paint-time tracker (for section 3 timing chart)
+const paintTimes = [];
+const PAINT_WINDOW = 60;
+function recordPaintTime(ms) {
+  paintTimes.push(ms);
+  if (paintTimes.length > PAINT_WINDOW) paintTimes.shift();
+}
+function avgPaintTime() {
+  if (paintTimes.length === 0) return 0;
+  let s = 0;
+  for (const t of paintTimes) s += t;
+  return s / paintTimes.length;
+}
+
+// Diff visualizer canvases (Section 2)
+const diffFull = document.getElementById('diff-full');
+const diffFullCtx = diffFull.getContext('2d');
+diffFullCtx.imageSmoothingEnabled = false;
+const diffOverlay = document.getElementById('diff-overlay');
+const diffOverlayCtx = diffOverlay.getContext('2d');
+diffOverlayCtx.imageSmoothingEnabled = false;
+const diffCounter = document.getElementById('diff-counter');
+
+function paintDiffOverlay(spr, cur) {
+  // Clear and re-stroke painted cells from this frame's diff buffer.
+  diffOverlayCtx.clearRect(0, 0, spr.width, spr.height);
+  const ops = spr.diffs[cur.frameIndex];
+  for (let i = 0; i < ops.length; i += 3) {
+    const x = ops[i], y = ops[i + 1], c = ops[i + 2];
+    if (c === 0) {
+      diffOverlayCtx.fillStyle = 'rgba(239,68,68,0.45)';
+    } else {
+      diffOverlayCtx.fillStyle = spr.palette[c];
+    }
+    diffOverlayCtx.fillRect(x, y, 1, 1);
+  }
+  // Outline so single pixels are visible at small canvas sizes.
+  diffOverlayCtx.fillStyle = 'rgba(255,255,255,0.6)';
+  for (let i = 0; i < ops.length; i += 3) {
+    const x = ops[i], y = ops[i + 1];
+    diffOverlayCtx.fillRect(x, y, 1, 1);
+    diffOverlayCtx.fillRect(x + 0.5, y + 0.5, 0.4, 0.4);
+  }
+  // Update counter.
+  const opsCount = ops.length / 3;
+  const total = spr.width * spr.height;
+  const skipPct = ((1 - opsCount / total) * 100).toFixed(1);
+  diffCounter.innerHTML = `frame <strong>${cur.frameIndex}</strong> · painted <span class="big">${opsCount}</span> / ${total.toLocaleString()} cells <span class="ratio">(${skipPct}% skipped)</span>`;
+}
+
+function load() {
+  const src = sprites[current];
+  let baseSprite = compile(src);
+  if (theme !== 'default' && themes[theme]?.[current]) {
+    sprite = withPalette(baseSprite, src, themes[theme][current]);
+  } else {
+    sprite = baseSprite;
+  }
+  // Size canvases.
+  canvas.width = sprite.width;
+  canvas.height = sprite.height;
+  diffFull.width = sprite.width;
+  diffFull.height = sprite.height;
+  diffOverlay.width = sprite.width;
+  diffOverlay.height = sprite.height;
+  diffFullCtx.imageSmoothingEnabled = false;
+  diffOverlayCtx.imageSmoothingEnabled = false;
+  svgState = prepareSVG(svg, sprite);
+  // Rebuild animator.
+  if (animator) animator.stop();
+  paintTimes.length = 0;
+  animator = createAnimator(sprite, [
+    c => {
+      const t0 = performance.now();
+      paintCanvas(ctx, sprite, c);
+      paintSVG(svgState, sprite, c);
+      paintAscii(ascii, sprite, c);
+      // Diff section: paint full + overlay
+      paintCanvas(diffFullCtx, sprite, c);
+      paintDiffOverlay(sprite, c);
+      recordPaintTime(performance.now() - t0);
+    },
+  ]);
+  animator.start();
+  playPause.textContent = 'Pause';
+  // Stats.
+  const bounds = measureUnionBounds(sprite);
+  const pct = Math.round(sprite.stats.compressionRatio * 100);
+  stats.innerHTML = `
+    <div class="stat-line"><span class="stat-key">size</span><span>${sprite.width} × ${sprite.height} px, ${sprite.stats.frameCount} frames</span></div>
+    <div class="stat-line"><span class="stat-key">palette</span><span>${sprite.palette.length - 1} colors</span></div>
+    <div class="stat-line"><span class="stat-key">total cells (full redraw)</span><span>${sprite.stats.totalCells.toLocaleString()}</span></div>
+    <div class="stat-line"><span class="stat-key">diff ops (compiled)</span><span>${sprite.stats.totalDiffOps.toLocaleString()} <span class="ratio">(-${pct}%)</span></span></div>
+    <div class="stat-line"><span class="stat-key">tight bounds (union)</span><span>${bounds.x},${bounds.y} ${bounds.width}×${bounds.height}</span></div>
+    <div class="stat-line"><span class="stat-key">compile()</span><span>${sprite.stats.compileMs.toFixed(2)} ms</span></div>
+  `;
+  // Notify dependent sections.
+  document.getElementById('swap-target').textContent = current;
+  updateTimingChart();
+  rebuildStress();
+}
+
+ctrlHost.addEventListener('click', e => {
+  const t = e.target;
+  if (t.dataset?.sprite) {
+    for (const b of ctrlHost.children) b.classList.toggle('on', b === t);
+    current = t.dataset.sprite;
+    load();
+  }
+});
+
+document.querySelectorAll('.theme-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.theme-btn').forEach(x => x.classList.toggle('on', x === b));
+    theme = b.dataset.theme;
+    load();
+  });
+});
+
+playPause.addEventListener('click', () => {
+  if (animator.isRunning()) {
+    animator.stop();
+    playPause.textContent = 'Play';
+  } else {
+    animator.start();
+    playPause.textContent = 'Pause';
+  }
+});
+stepBack.addEventListener('click', () => { animator.stop(); animator.step(-1); playPause.textContent = 'Play'; });
+stepFwd.addEventListener('click', () => { animator.stop(); animator.step(1); playPause.textContent = 'Play'; });
+
+// =============================================================================
+// Section 3: Compile vs paint timing chart
+// =============================================================================
+
+const barCompile = document.getElementById('bar-compile');
+const barPaint = document.getElementById('bar-paint');
+const numCompile = document.getElementById('num-compile');
+const numPaint = document.getElementById('num-paint');
+const timingTakeaway = document.getElementById('timing-takeaway');
+
+function updateTimingChart() {
+  if (!sprite) return;
+  const cMs = sprite.stats.compileMs;
+  const pMs = avgPaintTime();
+  const max = Math.max(cMs, pMs, 0.01);
+  numCompile.textContent = cMs.toFixed(2) + ' ms';
+  numPaint.textContent = pMs.toFixed(3) + ' ms';
+  barCompile.style.width = ((cMs / max) * 100).toFixed(1) + '%';
+  barPaint.style.width = ((pMs / max) * 100).toFixed(1) + '%';
+  if (pMs > 0) {
+    const ratio = (cMs / pMs).toFixed(0);
+    timingTakeaway.innerHTML = `Compile is roughly <strong>${ratio}×</strong> a single paint — but it only happens once. Per-frame paint runs three renderers (canvas + svg + ascii + the diff visualizer) in <strong>${pMs.toFixed(3)} ms</strong>.`;
+  }
+}
+setInterval(updateTimingChart, 250);
+
+// =============================================================================
+// Section 4: Palette swap timing benchmark
+// =============================================================================
+
+const swapBtn = document.getElementById('swap-bench');
+const barSwap = document.getElementById('bar-swap');
+const barRecomp = document.getElementById('bar-recomp');
+const numSwap = document.getElementById('num-swap');
+const numRecomp = document.getElementById('num-recomp');
+const swapTakeaway = document.getElementById('swap-takeaway');
+
+swapBtn.addEventListener('click', () => {
+  swapBtn.disabled = true;
+  swapBtn.textContent = 'Running…';
+  // Defer so UI updates.
+  setTimeout(() => {
+    const src = sprites[current];
+    const baseSprite = compile(src);
+    const remap = themes.night?.[current] ?? src.palette;
+    const N = 1000;
+
+    // Warm up.
+    for (let i = 0; i < 50; i++) withPalette(baseSprite, src, remap);
+    for (let i = 0; i < 5; i++) compile({ ...src, palette: remap });
+
+    let t0 = performance.now();
+    for (let i = 0; i < N; i++) withPalette(baseSprite, src, remap);
+    const swapMs = performance.now() - t0;
+
+    t0 = performance.now();
+    for (let i = 0; i < N; i++) compile({ ...src, palette: remap });
+    const recompMs = performance.now() - t0;
+
+    const max = Math.max(swapMs, recompMs);
+    numSwap.textContent = swapMs.toFixed(2) + ' ms';
+    numRecomp.textContent = recompMs.toFixed(2) + ' ms';
+    barSwap.style.width = ((swapMs / max) * 100).toFixed(1) + '%';
+    barRecomp.style.width = ((recompMs / max) * 100).toFixed(1) + '%';
+    const speedup = (recompMs / swapMs).toFixed(1);
+    swapTakeaway.innerHTML = `<strong>${N} palette swaps</strong> in <strong>${swapMs.toFixed(2)} ms</strong> (${(swapMs/N*1000).toFixed(1)} µs each) versus <strong>${recompMs.toFixed(2)} ms</strong> for the same number of full recompiles. <span class="ratio">${speedup}× faster</span>. The diff and grid arrays are shared by reference; only the palette array is rebuilt.`;
+    swapBtn.disabled = false;
+    swapBtn.textContent = 'Run swap benchmark';
+  }, 30);
+});
+
+// =============================================================================
+// Section 5: Stress field
+// =============================================================================
+
+const stressCanvas = document.getElementById('stress-canvas');
+const stressCtx = stressCanvas.getContext('2d');
+stressCtx.imageSmoothingEnabled = false;
+const stressCount = document.getElementById('stress-count');
+const stressCountNum = document.getElementById('stress-count-num');
+const stressModePF = document.getElementById('stress-mode-pf');
+const stressModeNaive = document.getElementById('stress-mode-naive');
+const fpsBadge = document.getElementById('fps-badge');
+const cellsBadge = document.getElementById('cells-badge');
+
+let stressMode = 'pf';      // 'pf' | 'naive'
+let stressInstances = [];   // {x, y, frame, prevFrame}
+let stressCanvasW = 0;
+let stressCanvasH = 0;
+const SPRITE_PADDING = 4;   // px between sprites in grid
+
+function rebuildStress() {
+  if (!sprite) return;
+  // Resize canvas to fill its container at native resolution.
+  const rect = stressCanvas.getBoundingClientRect();
+  stressCanvasW = Math.max(320, Math.floor(rect.width));
+  stressCanvasH = 360;
+  stressCanvas.width = stressCanvasW;
+  stressCanvas.height = stressCanvasH;
+  stressCtx.imageSmoothingEnabled = false;
+  // Compute layout.
+  const count = parseInt(stressCount.value, 10);
+  const cellW = sprite.width + SPRITE_PADDING;
+  const cellH = sprite.height + SPRITE_PADDING;
+  const cols = Math.max(1, Math.floor(stressCanvasW / cellW));
+  const rows = Math.ceil(count / cols);
+  // Build instances. Stagger initial frames so they're not all in lockstep —
+  // makes the diff path's "many small differences" pattern more realistic.
+  stressInstances = new Array(count);
+  for (let i = 0; i < count; i++) {
+    const cx = (i % cols) * cellW;
+    const cy = Math.floor(i / cols) * cellH;
+    stressInstances[i] = {
+      x: cx, y: cy,
+      frame: i % sprite.diffs.length,
+      prevFrame: -1,
+    };
+  }
+  // Wipe canvas.
+  stressCtx.fillStyle = '#0a0a0a';
+  stressCtx.fillRect(0, 0, stressCanvasW, stressCanvasH);
+}
+
+stressCount.addEventListener('input', () => {
+  stressCountNum.textContent = stressCount.value;
+  rebuildStress();
+});
+stressModePF.addEventListener('click', () => {
+  stressMode = 'pf';
+  stressModePF.classList.add('on');
+  stressModeNaive.classList.remove('on');
+  // Wipe so PF can rebuild from scratch.
+  stressCtx.fillStyle = '#0a0a0a';
+  stressCtx.fillRect(0, 0, stressCanvasW, stressCanvasH);
+  for (const inst of stressInstances) inst.prevFrame = -1;
+});
+stressModeNaive.addEventListener('click', () => {
+  stressMode = 'naive';
+  stressModeNaive.classList.add('on');
+  stressModePF.classList.remove('on');
+});
+
+window.addEventListener('resize', () => rebuildStress());
+
+// Frame-advance clock for stress instances. Decoupled from rAF so that
+// rAF cost reflects only paint, not the frame logic.
+let lastAdvance = performance.now();
+function advanceStressFrames(now) {
+  const dt = now - lastAdvance;
+  if (!sprite) return;
+  if (dt < sprite.speed) return;
+  lastAdvance = now;
+  const n = sprite.diffs.length;
+  for (const inst of stressInstances) {
+    inst.prevFrame = inst.frame;
+    inst.frame = (inst.frame + 1) % n;
+  }
+}
+
+function paintStressPF() {
+  // PixelFlow path: paint only diffs. On wrap (prev N-1 -> 0), the diff
+  // doesn't include "this used to be opaque, now transparent" — so when we
+  // wrap, we clear the instance bbox first, then paint frame 0's diff
+  // (which paints all opaque cells from blank).
+  const n = sprite.diffs.length;
+  const w = sprite.width, h = sprite.height;
+  let cellsPainted = 0;
+  for (const inst of stressInstances) {
+    const f = inst.frame;
+    const wrapped = inst.prevFrame === n - 1 && f === 0;
+    if (wrapped || inst.prevFrame === -1) {
+      stressCtx.fillStyle = '#0a0a0a';
+      stressCtx.fillRect(inst.x, inst.y, w, h);
+    }
+    const ops = sprite.diffs[f];
+    for (let i = 0; i < ops.length; i += 3) {
+      const x = ops[i], y = ops[i + 1], c = ops[i + 2];
+      if (c === 0) {
+        stressCtx.fillStyle = '#0a0a0a';
+      } else {
+        stressCtx.fillStyle = sprite.palette[c];
+      }
+      stressCtx.fillRect(inst.x + x, inst.y + y, 1, 1);
+    }
+    cellsPainted += ops.length / 3;
+    inst.prevFrame = f;
+  }
+  return cellsPainted;
+}
+
+function paintStressNaive() {
+  // Naive path: clear entire canvas, then for each instance walk every
+  // non-transparent cell of the current frame's full grid.
+  stressCtx.fillStyle = '#0a0a0a';
+  stressCtx.fillRect(0, 0, stressCanvasW, stressCanvasH);
+  const w = sprite.width, h = sprite.height;
+  let cellsPainted = 0;
+  for (const inst of stressInstances) {
+    const grid = sprite.grids[inst.frame];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const c = grid[y * w + x];
+        if (c !== 0) {
+          stressCtx.fillStyle = sprite.palette[c];
+          stressCtx.fillRect(inst.x + x, inst.y + y, 1, 1);
+          cellsPainted++;
+        }
+      }
+    }
+  }
+  return cellsPainted;
+}
+
+// FPS rolling avg.
+const fpsTimes = [];
+const FPS_WINDOW = 30;
+function recordFps(now, prev) {
+  if (prev > 0) {
+    fpsTimes.push(1000 / (now - prev));
+    if (fpsTimes.length > FPS_WINDOW) fpsTimes.shift();
+  }
+}
+function avgFps() {
+  if (fpsTimes.length === 0) return 0;
+  let s = 0;
+  for (const v of fpsTimes) s += v;
+  return s / fpsTimes.length;
+}
+
+let lastRaf = 0;
+let lastCells = 0;
+let lastBadgeUpdate = 0;
+function stressLoop(now) {
+  recordFps(now, lastRaf);
+  lastRaf = now;
+  advanceStressFrames(now);
+  const cells = stressMode === 'pf' ? paintStressPF() : paintStressNaive();
+  lastCells = cells;
+  if (now - lastBadgeUpdate > 200) {
+    lastBadgeUpdate = now;
+    const fps = avgFps();
+    fpsBadge.textContent = fps.toFixed(0) + ' fps';
+    fpsBadge.classList.toggle('good', fps >= 50);
+    fpsBadge.classList.toggle('bad', fps < 30);
+    cellsBadge.textContent = cells.toLocaleString() + ' cells/f';
+  }
+  requestAnimationFrame(stressLoop);
+}
+requestAnimationFrame(stressLoop);
+
+// =============================================================================
+// Section 6: PNG drag-and-drop
+// =============================================================================
+
+const dropzone = document.getElementById('dropzone');
+const dzInput = document.getElementById('dropzone-input');
+const dzPick = document.getElementById('dropzone-pick');
+const dzStatus = document.getElementById('dropzone-status');
+const rowsInput = document.getElementById('rows');
+const colsInput = document.getElementById('cols');
+const maxcInput = document.getElementById('maxc');
+
+dzPick.addEventListener('click', () => dzInput.click());
+dzInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+['dragenter', 'dragover'].forEach(ev =>
+  dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.add('over'); }),
+);
+['dragleave', 'drop'].forEach(ev =>
+  dropzone.addEventListener(ev, e => { e.preventDefault(); dropzone.classList.remove('over'); }),
+);
+dropzone.addEventListener('drop', e => {
+  const f = e.dataTransfer?.files?.[0];
+  if (f) handleFile(f);
+});
+
+function handleFile(file) {
+  if (!file.type.startsWith('image/')) {
+    dzStatus.innerHTML = `<span style="color: var(--bad)">Not an image: ${file.type || 'unknown'}</span>`;
+    return;
+  }
+  dzStatus.textContent = 'Loading…';
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    try {
+      const t0 = performance.now();
+      const { source } = importImage(img, {
+        rows: parseInt(rowsInput.value, 10),
+        cols: parseInt(colsInput.value, 10),
+        maxColors: parseInt(maxcInput.value, 10),
+        name: file.name.replace(/\.[^.]+$/, ''),
+      });
+      const importMs = performance.now() - t0;
+      const compiled = compile(source);
+      // Register and switch.
+      const key = source.name || `imported-${Date.now()}`;
+      sprites[key] = source;
+      current = key;
+      rebuildSpritePicker();
+      load();
+      dzStatus.innerHTML = `<span class="ratio">Imported "${key}"</span> · ${img.naturalWidth}×${img.naturalHeight} px → ${compiled.stats.frameCount} frame(s), ${compiled.palette.length - 1} colors · importImage: ${importMs.toFixed(1)} ms · compile: ${compiled.stats.compileMs.toFixed(2)} ms`;
+    } catch (err) {
+      dzStatus.innerHTML = `<span style="color: var(--bad)">Import failed: ${err.message}</span>`;
+    }
+  };
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    dzStatus.innerHTML = `<span style="color: var(--bad)">Failed to decode image</span>`;
+  };
+  img.src = url;
+}
+
+// =============================================================================
+// Boot
+// =============================================================================
+
+rebuildSpritePicker();
+load();
+</script>
+
+</body>
+</html>

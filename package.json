@@ -1,0 +1,54 @@
+{
+  "name": "pixelflow",
+  "version": "0.1.0",
+  "description": "Pretext-inspired pixel animation library: compile once, paint cheap, render anywhere.",
+  "type": "module",
+  "main": "dist/pixelflow.js",
+  "types": "dist/pixelflow.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/pixelflow.d.ts",
+      "default": "./dist/pixelflow.js"
+    }
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "license": "MIT",
+  "author": "Daniel-Nexus <daniel@to.nexus>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Daniel-Nexus/pixelflow.git"
+  },
+  "homepage": "https://github.com/Daniel-Nexus/pixelflow#readme",
+  "bugs": {
+    "url": "https://github.com/Daniel-Nexus/pixelflow/issues"
+  },
+  "keywords": [
+    "pixel",
+    "animation",
+    "sprite",
+    "canvas",
+    "svg",
+    "ascii",
+    "pretext",
+    "diff",
+    "palette-swap"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "typescript": "5.5"
+  }
+}
