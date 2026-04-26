@@ -24,7 +24,7 @@
     "prepublishOnly": "npm run typecheck && npm run build"
   },
   "license": "MIT",
-  "author": "Daniel-Nexus <daniel@to.nexus>",
+  "author": "NEXUS AI Labs <daniel@to.nexus> (https://ailabs.cross.nexus)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Daniel-Nexus/pixelflow.git"

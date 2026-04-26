@@ -87,6 +87,11 @@
 
   /* Section emphasis box */
   .takeaway { font-size: 12px; color: var(--muted); padding: 10px 14px; border-left: 2px solid var(--accent); background: var(--code-bg); border-radius: 4px; margin-top: 12px; }
+
+  /* Footer */
+  footer.credit { margin-top: 48px; padding-top: 20px; border-top: 0.5px solid var(--border); font-size: 12px; color: var(--muted); text-align: center; }
+  footer.credit a { color: var(--fg); text-decoration: none; border-bottom: 0.5px dashed var(--border); }
+  footer.credit a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -277,6 +282,10 @@ const anim = createAnimator(sprite, [
 anim.start();</pre>
 </details>
 </section>
+
+<footer class="credit">
+  Made by <a href="https://ailabs.cross.nexus" target="_blank" rel="noopener">NEXUS AI Labs</a>
+</footer>
 
 <script type="module">
 import {

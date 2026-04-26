@@ -177,3 +177,7 @@ the threshold becomes `'.'`.
 ## License
 
 MIT
+
+---
+
+Made by **[NEXUS AI Labs](https://ailabs.cross.nexus)**.
