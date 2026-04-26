@@ -1,9 +1,21 @@
 # PixelFlow
 
-Pretext-inspired pixel animation. Compile once, paint cheap, render anywhere.
+**Tiny pixel animations for marketing pages, loading indicators, and dashboard widgets.**
+ESM, no GPU, themes via palette swap. ~16 kB packed, zero runtime dependencies.
 
 **[Live demo →](https://daniel-nexus.github.io/pixelflow/demos/)** with diff visualizer,
 compile-vs-paint timing chart, palette swap benchmark, stress field, and PNG drop import.
+
+## When to use
+
+✅ **Decorative web animations** — mascot loops, hero-section accents, hover effects, idle indicators
+✅ **Dashboard / SaaS widgets** — status pulses, build/deploy indicators, activity sparkline characters
+✅ **Component library mascots that need light/dark theming** — `withPalette()` swaps colors in microseconds
+✅ **Anywhere the same animation needs Canvas *and* SVG *and* ASCII** — CI logs, snapshot tests, terminal UIs
+
+❌ **Games** — use Phaser or PixiJS, they have WebGL and physics
+❌ **Photographic content** — quantization is naive, use a real image pipeline
+❌ **Thousands of distinct sprites** — single-instance compile cost adds up
 
 ## Why
 
@@ -99,12 +111,24 @@ All renderers read `sprite.diffs[cursor.frameIndex]` and update only changed
 cells. Add your own (WebGL, terminal, server-side PNG) by following the same
 pattern: walk the flat `[x, y, colorIndex, ...]` buffer.
 
-- `paintCanvas(ctx, sprite, cursor)` — `fillRect` at sprite resolution; scale
-  via CSS with `image-rendering: pixelated`.
+- `paintCanvas(ctx, sprite, cursor)` — diff-op based; walks the packed
+  `[x, y, color]` buffer for the current frame and `fillRect`s only changed
+  cells. Cheapest per-frame cost when most cells stay constant. Scale via
+  CSS with `image-rendering: pixelated`.
+- `paintRaster(ctx, sprite, cursor, { dx, dy })` — pre-rasterizes each frame
+  to an offscreen canvas (lazy, cached per sprite) and paints with one
+  `drawImage` call. Trades per-cell granularity for batched GPU-accelerated
+  blits — use this when rendering many instances of the same sprite.
 - `prepareSVG(host, sprite)` + `paintSVG(state, sprite, cursor)` — one `<rect>`
   per pixel created upfront, only `fill` attribute updated per frame.
 - `renderAscii(sprite, cursor)` / `paintAscii(pre, sprite, cursor)` —
   luminance-mapped block characters (` ░▒▓█`).
+
+> **Picking between `paintCanvas` and `paintRaster`:** start with `paintCanvas`
+> for single sprites with mostly-static content (the diff visualizer in the
+> demo shows the savings live). Switch to `paintRaster` when you need many
+> instances — at 5000 sprites of 48×48, the diff path drops below 30 fps while
+> raster sustains 60.
 
 ### Inspection
 
@@ -166,7 +190,9 @@ the threshold becomes `'.'`.
 | `compile(source)` | one-time analysis + diff compression |
 | `compileMemo(key, source)` / `clearCache()` | cached variant |
 | `cursorStart`, `nextCursor`, `stepCursor` | position arithmetic |
-| `paintCanvas(ctx, sprite, cursor, opts?)` | Canvas2D paint |
+| `paintCanvas(ctx, sprite, cursor, opts?)` | Canvas2D diff-op paint |
+| `paintRaster(ctx, sprite, cursor, opts?)` | Canvas2D pre-raster + drawImage (many instances) |
+| `prerasterize(sprite)` / `clearRasterCache(sprite?)` | manage the raster cache |
 | `prepareSVG(host, sprite)` / `paintSVG(state, sprite, cursor)` | SVG paint |
 | `renderAscii(sprite, cursor)` / `paintAscii(el, sprite, cursor)` | ASCII paint |
 | `measureFrameBounds`, `measureUnionBounds` | non-transparent bbox |

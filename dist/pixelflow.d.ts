@@ -90,6 +90,44 @@ export declare function stepCursor(sprite: CompiledSprite, cursor: FrameCursor, 
 export declare function paintCanvas(ctx: CanvasRenderingContext2D, sprite: CompiledSprite, cursor: FrameCursor, options?: {
     clearOnFirst?: boolean;
 }): void;
+/**
+ * Paint a frame by `drawImage`-ing a pre-rasterized offscreen canvas.
+ *
+ * Trade-off vs `paintCanvas`:
+ *   - `paintCanvas` walks per-frame diff ops (cheap when most cells are static)
+ *   - `paintRaster` walks each frame's grid ONCE up front, then per-paint is
+ *     a single GPU-accelerated `drawImage` call.
+ *
+ * Use `paintRaster` when:
+ *   - You're rendering many instances of the same sprite (stress field, particle-
+ *     style effects, sprite grids). One drawImage per instance scales much
+ *     better than 50–500 fillRects per instance.
+ *   - You move the sprite around (translate, transform) — drawImage handles this
+ *     for free; diff-op painting would need to redraw the whole sprite anyway.
+ *
+ * Use `paintCanvas` (diff-op) when:
+ *   - You have a single, stationary sprite where most cells stay constant
+ *     between frames (e.g. dashboard widget, decorative animation).
+ *   - You want to visualize *which* cells change per frame.
+ *
+ * The first paintRaster call for a given sprite rasterizes all frames eagerly
+ * and caches them. Subsequent calls are a single drawImage. The cache is keyed
+ * by sprite reference (WeakMap), so palette-swapped variants get their own
+ * cache entry without invalidating the source.
+ */
+export declare function paintRaster(ctx: CanvasRenderingContext2D, sprite: CompiledSprite, cursor: FrameCursor, options?: {
+    dx?: number;
+    dy?: number;
+    clearBefore?: boolean;
+}): void;
+/**
+ * Eagerly raster every frame of `sprite` to per-frame offscreen canvases.
+ * Useful for SSR-style preroll, or to surface rasterization cost up front
+ * (default lazy behaviour spreads it over the first paintRaster call).
+ */
+export declare function prerasterize(sprite: CompiledSprite): void;
+/** Drop the offscreen canvas cache for a sprite (e.g. after a custom palette mutation). */
+export declare function clearRasterCache(sprite?: CompiledSprite): void;
 export interface SVGRenderState {
     readonly rects: readonly SVGRectElement[];
     readonly width: number;

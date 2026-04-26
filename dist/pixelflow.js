@@ -174,6 +174,88 @@ export function paintCanvas(ctx, sprite, cursor, options = {}) {
         }
     }
 }
+// --- Canvas2D (rasterized) --------------------------------------------------
+/**
+ * Cache of pre-rasterized per-frame offscreen canvases, keyed by sprite reference.
+ * `withPalette()` returns a new sprite, so themed variants get their own cache
+ * entry automatically without invalidating the original.
+ */
+const rasterCache = new WeakMap();
+/**
+ * Paint a frame by `drawImage`-ing a pre-rasterized offscreen canvas.
+ *
+ * Trade-off vs `paintCanvas`:
+ *   - `paintCanvas` walks per-frame diff ops (cheap when most cells are static)
+ *   - `paintRaster` walks each frame's grid ONCE up front, then per-paint is
+ *     a single GPU-accelerated `drawImage` call.
+ *
+ * Use `paintRaster` when:
+ *   - You're rendering many instances of the same sprite (stress field, particle-
+ *     style effects, sprite grids). One drawImage per instance scales much
+ *     better than 50–500 fillRects per instance.
+ *   - You move the sprite around (translate, transform) — drawImage handles this
+ *     for free; diff-op painting would need to redraw the whole sprite anyway.
+ *
+ * Use `paintCanvas` (diff-op) when:
+ *   - You have a single, stationary sprite where most cells stay constant
+ *     between frames (e.g. dashboard widget, decorative animation).
+ *   - You want to visualize *which* cells change per frame.
+ *
+ * The first paintRaster call for a given sprite rasterizes all frames eagerly
+ * and caches them. Subsequent calls are a single drawImage. The cache is keyed
+ * by sprite reference (WeakMap), so palette-swapped variants get their own
+ * cache entry without invalidating the source.
+ */
+export function paintRaster(ctx, sprite, cursor, options = {}) {
+    let frames = rasterCache.get(sprite);
+    if (!frames) {
+        frames = rasterizeAllFrames(sprite);
+        rasterCache.set(sprite, frames);
+    }
+    const { dx = 0, dy = 0, clearBefore = true } = options;
+    if (clearBefore)
+        ctx.clearRect(dx, dy, sprite.width, sprite.height);
+    ctx.drawImage(frames[cursor.frameIndex], dx, dy);
+}
+/**
+ * Eagerly raster every frame of `sprite` to per-frame offscreen canvases.
+ * Useful for SSR-style preroll, or to surface rasterization cost up front
+ * (default lazy behaviour spreads it over the first paintRaster call).
+ */
+export function prerasterize(sprite) {
+    if (!rasterCache.has(sprite)) {
+        rasterCache.set(sprite, rasterizeAllFrames(sprite));
+    }
+}
+/** Drop the offscreen canvas cache for a sprite (e.g. after a custom palette mutation). */
+export function clearRasterCache(sprite) {
+    if (sprite)
+        rasterCache.delete(sprite);
+    // No way to clear all entries from a WeakMap — they GC when sprite refs drop.
+}
+function rasterizeAllFrames(sprite) {
+    const out = [];
+    const w = sprite.width, h = sprite.height;
+    for (let f = 0; f < sprite.grids.length; f++) {
+        const off = document.createElement('canvas');
+        off.width = w;
+        off.height = h;
+        const octx = off.getContext('2d');
+        if (!octx)
+            throw new Error('paintRaster(): could not get 2D context for offscreen');
+        octx.imageSmoothingEnabled = false;
+        const grid = sprite.grids[f];
+        for (let i = 0; i < grid.length; i++) {
+            const c = grid[i];
+            if (c === 0)
+                continue;
+            octx.fillStyle = sprite.palette[c];
+            octx.fillRect(i % w, (i / w) | 0, 1, 1);
+        }
+        out.push(off);
+    }
+    return out;
+}
 const SVG_NS = 'http://www.w3.org/2000/svg';
 /**
  * One-time SVG node setup. Allocates one <rect> per pixel and clears the host.

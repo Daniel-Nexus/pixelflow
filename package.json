@@ -1,6 +1,6 @@
 {
   "name": "pretext-pixel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pretext-inspired pixel animation library: compile once, paint cheap, render anywhere.",
   "type": "module",
   "main": "dist/pixelflow.js",

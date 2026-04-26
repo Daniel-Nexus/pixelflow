@@ -219,6 +219,7 @@ hot path and a naive full-redraw baseline. Watch the FPS gap widen as instance c
   <label>instances <input type="range" id="stress-count" min="0" max="5000" value="800" step="50"><span id="stress-count-num" style="font-family: ui-monospace, monospace;">800</span></label>
   <div style="display:flex; gap:6px;">
     <button id="stress-mode-pf" class="on">PixelFlow (diff)</button>
+    <button id="stress-mode-raster">PixelFlow (raster)</button>
     <button id="stress-mode-naive">Naive full redraw</button>
   </div>
   <span class="fps-badge" id="fps-badge">— fps</span>
@@ -226,10 +227,12 @@ hot path and a naive full-redraw baseline. Watch the FPS gap widen as instance c
 </div>
 
 <canvas id="stress-canvas" class="stress-canvas"></canvas>
-<p class="takeaway" id="stress-takeaway">Both badges show real per-frame work: <code>cells/f</code> is the
-total <code>fillRect</code> count. PixelFlow only paints cells that differ from the previous frame;
-naive walks every non-transparent cell of every instance every frame. The savings scale with
-animation similarity — push the slider toward 5000 to see the FPS gap widen.</p>
+<p class="takeaway" id="stress-takeaway">Three paint strategies, same compiled sprite:
+<strong>Diff</strong> walks per-frame diff ops (best for single-sprite mostly-static animations);
+<strong>Raster</strong> pre-rasterizes each frame to an offscreen canvas and drawImages it
+(best for many instances); <strong>Naive</strong> walks every non-transparent cell every frame
+(baseline). At ~5000 instances Raster sustains 60 fps where Diff drops below 30 — the diff path
+trades batch efficiency for per-cell granularity.</p>
 </section>
 
 <!-- ============================================================ -->
@@ -254,7 +257,12 @@ single-char palette, and slice it into frames.</p>
 <section id="code">
 <details>
 <summary>Usage example</summary>
-<pre class="code">import { compile, prepareSVG, paintCanvas, paintSVG, paintAscii, createAnimator } from 'pretext-pixel';
+<pre class="code">import {
+  compile, createAnimator,
+  paintCanvas,    // diff-op (cheapest per-frame for single sprite)
+  paintRaster,    // pre-raster + drawImage (best for many instances)
+  prepareSVG, paintSVG, paintAscii,
+} from 'pretext-pixel';
 
 const sprite = compile({
   frames: [
@@ -289,9 +297,9 @@ anim.start();</pre>
 
 <script type="module">
 import {
-  compile, cursorStart, prepareSVG, paintCanvas, paintSVG, paintAscii,
+  compile, cursorStart, prepareSVG, paintCanvas, paintRaster, paintSVG, paintAscii,
   createAnimator, withPalette, measureUnionBounds, importImage,
-} from '../dist/pixelflow.js';
+} from '../dist/pixelflow.js?v=0.2.0';
 
 // =============================================================================
 // Sprite library + themes
@@ -725,7 +733,7 @@ const stressModeNaive = document.getElementById('stress-mode-naive');
 const fpsBadge = document.getElementById('fps-badge');
 const cellsBadge = document.getElementById('cells-badge');
 
-let stressMode = 'pf';      // 'pf' | 'naive'
+let stressMode = 'pf';      // 'pf' | 'raster' | 'naive'
 let stressInstances = [];   // {x, y, frame, prevFrame}
 let stressCanvasW = 0;
 let stressCanvasH = 0;
@@ -767,20 +775,20 @@ stressCount.addEventListener('input', () => {
   stressCountNum.textContent = stressCount.value;
   rebuildStress();
 });
-stressModePF.addEventListener('click', () => {
-  stressMode = 'pf';
-  stressModePF.classList.add('on');
-  stressModeNaive.classList.remove('on');
-  // Wipe so PF can rebuild from scratch.
+const stressModeRaster = document.getElementById('stress-mode-raster');
+function setStressMode(mode) {
+  stressMode = mode;
+  stressModePF.classList.toggle('on', mode === 'pf');
+  stressModeRaster.classList.toggle('on', mode === 'raster');
+  stressModeNaive.classList.toggle('on', mode === 'naive');
+  // Reset canvas + instance prevFrame state for clean redraw.
   stressCtx.fillStyle = '#0a0a0a';
   stressCtx.fillRect(0, 0, stressCanvasW, stressCanvasH);
   for (const inst of stressInstances) inst.prevFrame = -1;
-});
-stressModeNaive.addEventListener('click', () => {
-  stressMode = 'naive';
-  stressModeNaive.classList.add('on');
-  stressModePF.classList.remove('on');
-});
+}
+stressModePF.addEventListener('click', () => setStressMode('pf'));
+stressModeRaster.addEventListener('click', () => setStressMode('raster'));
+stressModeNaive.addEventListener('click', () => setStressMode('naive'));
 
 window.addEventListener('resize', () => rebuildStress());
 
@@ -830,6 +838,17 @@ function paintStressPF() {
   return cellsPainted;
 }
 
+function paintStressRaster() {
+  // Raster path: one drawImage per instance from the per-frame offscreen cache.
+  // Painted "cells" here are conceptual — each drawImage covers w*h pixels in
+  // a single GPU-accelerated blit, so we report instance count instead.
+  for (const inst of stressInstances) {
+    paintRaster(stressCtx, sprite, { frameIndex: inst.frame }, { dx: inst.x, dy: inst.y, clearBefore: true });
+    inst.prevFrame = inst.frame;
+  }
+  return stressInstances.length;  // drawImage calls
+}
+
 function paintStressNaive() {
   // Naive path: clear entire canvas, then for each instance walk every
   // non-transparent cell of the current frame's full grid.
@@ -876,7 +895,10 @@ function stressLoop(now) {
   recordFps(now, lastRaf);
   lastRaf = now;
   advanceStressFrames(now);
-  const cells = stressMode === 'pf' ? paintStressPF() : paintStressNaive();
+  let cells;
+  if (stressMode === 'pf')      cells = paintStressPF();
+  else if (stressMode === 'raster') cells = paintStressRaster();
+  else                              cells = paintStressNaive();
   lastCells = cells;
   if (now - lastBadgeUpdate > 200) {
     lastBadgeUpdate = now;
@@ -884,7 +906,8 @@ function stressLoop(now) {
     fpsBadge.textContent = fps.toFixed(0) + ' fps';
     fpsBadge.classList.toggle('good', fps >= 50);
     fpsBadge.classList.toggle('bad', fps < 30);
-    cellsBadge.textContent = cells.toLocaleString() + ' cells/f';
+    const unit = stressMode === 'raster' ? ' drawImage/f' : ' cells/f';
+    cellsBadge.textContent = cells.toLocaleString() + unit;
   }
   requestAnimationFrame(stressLoop);
 }
