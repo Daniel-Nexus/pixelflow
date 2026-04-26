@@ -1,7 +1,11 @@
 # PixelFlow
 
 **Tiny pixel animations for marketing pages, loading indicators, and dashboard widgets.**
-ESM, no GPU, themes via palette swap. ~16 kB packed, zero runtime dependencies.
+ESM, no GPU, themes via palette swap. ~22 kB packed, zero runtime dependencies.
+
+> v0.2.1 adds **`paintRaster`** — a pre-rasterized + drawImage paint strategy for
+> rendering many instances of the same sprite. Pairs with the existing diff-op
+> `paintCanvas` so you pick per use case. See [Renderers](#renderers).
 
 **[Live demo →](https://daniel-nexus.github.io/pixelflow/demos/)** with diff visualizer,
 compile-vs-paint timing chart, palette swap benchmark, stress field, and PNG drop import.
@@ -105,6 +109,7 @@ Includes `stats`:
 A `FrameCursor` is just `{ frameIndex }`. Use `cursorStart`, `nextCursor()`,
 `stepCursor()` to navigate. Mirrors pretext's `LayoutCursor`.
 
+<a id="renderers"></a>
 ### Renderers
 
 All renderers read `sprite.diffs[cursor.frameIndex]` and update only changed
@@ -199,6 +204,19 @@ the threshold becomes `'.'`.
 | `withPalette(sprite, source, remap)` | palette swap, structure-shared |
 | `createAnimator(sprite, paintFns, opts?)` | playback driver |
 | `importImage(img, opts?)` | PNG → SpriteSource with quantize |
+
+## Running the demo locally
+
+```sh
+git clone https://github.com/Daniel-Nexus/pixelflow.git
+cd pixelflow
+npm install
+npm run build
+python3 -m http.server 8765   # or any static server
+# open http://localhost:8765/demos/index.html
+```
+
+Or visit the hosted version: https://daniel-nexus.github.io/pixelflow/demos/
 
 ## License
 

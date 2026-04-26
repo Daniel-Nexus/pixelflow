@@ -297,9 +297,9 @@ anim.start();</pre>
 
 <script type="module">
 import {
-  compile, cursorStart, prepareSVG, paintCanvas, paintRaster, paintSVG, paintAscii,
-  createAnimator, withPalette, measureUnionBounds, importImage,
-} from '../dist/pixelflow.js?v=0.2.0';
+  compile, cursorStart, prepareSVG, paintCanvas, paintRaster, prerasterize,
+  paintSVG, paintAscii, createAnimator, withPalette, measureUnionBounds, importImage,
+} from '../dist/pixelflow.js?v=0.2.1';
 
 // =============================================================================
 // Sprite library + themes
@@ -581,6 +581,8 @@ function load() {
   diffFullCtx.imageSmoothingEnabled = false;
   diffOverlayCtx.imageSmoothingEnabled = false;
   svgState = prepareSVG(svg, sprite);
+  // Warm the raster cache so the stress field's first paintRaster call doesn't stall.
+  prerasterize(sprite);
   // ASCII panel: font size scales with sprite width so it fits the panel.
   // Monospace chars are ~0.6× font size wide. Target ~180px panel inner width.
   const asciiFontPx = Math.max(3, Math.min(11, Math.floor(180 / sprite.width / 0.6)));

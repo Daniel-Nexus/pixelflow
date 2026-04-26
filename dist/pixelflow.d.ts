@@ -82,13 +82,25 @@ export declare function nextCursor(sprite: CompiledSprite, cursor: FrameCursor):
 /** Step a cursor by an arbitrary integer delta (positive or negative), with wrap-around. */
 export declare function stepCursor(sprite: CompiledSprite, cursor: FrameCursor, delta: number): FrameCursor;
 /**
- * Paint one frame into a 2D canvas context. The canvas itself should be
- * sized to (sprite.width, sprite.height) — use CSS to scale up with
- * `image-rendering: pixelated`. Caller controls clearing semantics:
- * if you want a clean redraw on frame 0, pass `clearOnFirst: true`.
+ * Paint one frame into a 2D canvas context using the per-frame diff buffer.
+ *
+ * Clearing semantics:
+ *   - `clearOnFirst: true` (default) clears the sprite's entire bbox on frame 0.
+ *     Right for a single, stationary sprite — frames 1..N then paint diffs onto
+ *     an already-correct previous frame.
+ *   - `clearBefore: true` clears the sprite's bbox on EVERY paint, then paints
+ *     the full grid (not the diff). Use this when the sprite moves or when other
+ *     drawing happens between paints (multi-instance scenarios). Stateless and
+ *     wrap-around safe at the cost of painting all opaque cells every frame.
+ *   - `dx` / `dy` shift the paint origin within the destination context.
+ *
+ * Sprite-resolution coords; scale up via CSS `image-rendering: pixelated`.
  */
 export declare function paintCanvas(ctx: CanvasRenderingContext2D, sprite: CompiledSprite, cursor: FrameCursor, options?: {
     clearOnFirst?: boolean;
+    clearBefore?: boolean;
+    dx?: number;
+    dy?: number;
 }): void;
 /**
  * Paint a frame by `drawImage`-ing a pre-rasterized offscreen canvas.
@@ -114,6 +126,14 @@ export declare function paintCanvas(ctx: CanvasRenderingContext2D, sprite: Compi
  * and caches them. Subsequent calls are a single drawImage. The cache is keyed
  * by sprite reference (WeakMap), so palette-swapped variants get their own
  * cache entry without invalidating the source.
+ *
+ * ⚠️ Palette swap interaction: `withPalette()` returns a fresh sprite reference,
+ * which means the raster path pays a full re-rasterization on first paint after
+ * a swap (~5–10ms for a 64×64×16-frame sprite). The "structure-shared palette
+ * swap is microsecond" guarantee only applies to `paintCanvas` (diff-op). If
+ * you swap palettes frequently while using `paintRaster`, call
+ * `prerasterize(swapped)` after the swap to absorb the cost off the hot path,
+ * or stick to `paintCanvas`.
  */
 export declare function paintRaster(ctx: CanvasRenderingContext2D, sprite: CompiledSprite, cursor: FrameCursor, options?: {
     dx?: number;

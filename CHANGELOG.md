@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-04-26
+
+### Added
+- `paintCanvas` now accepts `clearBefore`, `dx`, and `dy` options. Setting
+  `clearBefore: true` makes the diff-op renderer stateless — clears the bbox
+  every paint, then walks the full grid for that frame. Use this for moving
+  sprites or multi-instance scenarios where the prior-frame assumption breaks.
+- `npm test` runs the smoke suite via `tsx`. Now part of CI and `prepublishOnly`.
+
+### Changed
+- README: bundle size updated from "~16 kB" to "~20 kB packed" (paintRaster
+  added 3.5 kB to dist). Added "Running the demo locally" section, and a
+  v0.2.1 callout near the top.
+- `paintRaster` JSDoc warns about its interaction with `withPalette`: a
+  palette swap forces a fresh raster cache (~5–10 ms), unlike the diff path's
+  microsecond swap. Use `prerasterize(swapped)` to absorb the cost off the
+  hot path.
+- Demo's `load()` now calls `prerasterize(sprite)` so switching to the stress
+  field's raster mode doesn't stall on first paint.
+
 ## [0.2.0] - 2026-04-26
 
 ### Added

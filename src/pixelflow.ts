@@ -229,30 +229,53 @@ export function stepCursor(sprite: CompiledSprite, cursor: FrameCursor, delta: n
 // --- Canvas2D ---------------------------------------------------------------
 
 /**
- * Paint one frame into a 2D canvas context. The canvas itself should be
- * sized to (sprite.width, sprite.height) — use CSS to scale up with
- * `image-rendering: pixelated`. Caller controls clearing semantics:
- * if you want a clean redraw on frame 0, pass `clearOnFirst: true`.
+ * Paint one frame into a 2D canvas context using the per-frame diff buffer.
+ *
+ * Clearing semantics:
+ *   - `clearOnFirst: true` (default) clears the sprite's entire bbox on frame 0.
+ *     Right for a single, stationary sprite — frames 1..N then paint diffs onto
+ *     an already-correct previous frame.
+ *   - `clearBefore: true` clears the sprite's bbox on EVERY paint, then paints
+ *     the full grid (not the diff). Use this when the sprite moves or when other
+ *     drawing happens between paints (multi-instance scenarios). Stateless and
+ *     wrap-around safe at the cost of painting all opaque cells every frame.
+ *   - `dx` / `dy` shift the paint origin within the destination context.
+ *
+ * Sprite-resolution coords; scale up via CSS `image-rendering: pixelated`.
  */
 export function paintCanvas(
   ctx: CanvasRenderingContext2D,
   sprite: CompiledSprite,
   cursor: FrameCursor,
-  options: { clearOnFirst?: boolean } = {},
+  options: { clearOnFirst?: boolean; clearBefore?: boolean; dx?: number; dy?: number } = {},
 ): void {
-  const { clearOnFirst = true } = options;
+  const { clearOnFirst = true, clearBefore = false, dx = 0, dy = 0 } = options;
   const f = cursor.frameIndex;
-  if (f === 0 && clearOnFirst) ctx.clearRect(0, 0, sprite.width, sprite.height);
+  if (clearBefore) {
+    // Stateless mode: clear bbox + paint full grid for this frame.
+    ctx.clearRect(dx, dy, sprite.width, sprite.height);
+    const grid = sprite.grids[f];
+    const w = sprite.width;
+    for (let i = 0; i < grid.length; i++) {
+      const c = grid[i];
+      if (c === 0) continue;
+      ctx.fillStyle = sprite.palette[c];
+      ctx.fillRect(dx + (i % w), dy + ((i / w) | 0), 1, 1);
+    }
+    return;
+  }
+  // Diff mode: assume previous frame is on the canvas; only paint changes.
+  if (f === 0 && clearOnFirst) ctx.clearRect(dx, dy, sprite.width, sprite.height);
   const ops = sprite.diffs[f];
   for (let i = 0; i < ops.length; i += 3) {
     const x = ops[i];
     const y = ops[i + 1];
     const c = ops[i + 2];
     if (c === 0) {
-      ctx.clearRect(x, y, 1, 1);
+      ctx.clearRect(dx + x, dy + y, 1, 1);
     } else {
       ctx.fillStyle = sprite.palette[c];
-      ctx.fillRect(x, y, 1, 1);
+      ctx.fillRect(dx + x, dy + y, 1, 1);
     }
   }
 }
@@ -290,6 +313,14 @@ const rasterCache: WeakMap<CompiledSprite, HTMLCanvasElement[]> = new WeakMap();
  * and caches them. Subsequent calls are a single drawImage. The cache is keyed
  * by sprite reference (WeakMap), so palette-swapped variants get their own
  * cache entry without invalidating the source.
+ *
+ * ⚠️ Palette swap interaction: `withPalette()` returns a fresh sprite reference,
+ * which means the raster path pays a full re-rasterization on first paint after
+ * a swap (~5–10ms for a 64×64×16-frame sprite). The "structure-shared palette
+ * swap is microsecond" guarantee only applies to `paintCanvas` (diff-op). If
+ * you swap palettes frequently while using `paintRaster`, call
+ * `prerasterize(swapped)` after the swap to absorb the cost off the hot path,
+ * or stick to `paintCanvas`.
  */
 export function paintRaster(
   ctx: CanvasRenderingContext2D,

@@ -1,6 +1,6 @@
 {
   "name": "pretext-pixel",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Pretext-inspired pixel animation library: compile once, paint cheap, render anywhere.",
   "type": "module",
   "main": "dist/pixelflow.js",
@@ -21,7 +21,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run typecheck && npm run build"
+    "test": "tsx tests/smoke.ts",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "license": "MIT",
   "author": "NEXUS AI Labs <daniel@to.nexus> (https://ailabs.cross.nexus)",
@@ -49,6 +50,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "tsx": "^4.19.0",
     "typescript": "5.5"
   }
 }
